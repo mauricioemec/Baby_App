@@ -2,8 +2,8 @@ import { createContext, useState, useEffect, useCallback } from 'react';
 import * as babyService from '../services/babyService';
 import * as recordsService from '../services/recordsService';
 import {
-  calculateExpectedMilkVolume,
-  calculateUrineThreshold,
+  calculateDailyMilkTarget,
+  calculateDailyPeeTarget,
   calculatePercentile
 } from '../utils/calculation-helpers';
 import omsData from '../data/oms-data.json';
@@ -176,15 +176,13 @@ export const BabyProvider = ({ children }) => {
       (new Date() - new Date(currentBaby.birthDate)) / (1000 * 60 * 60 * 24)
     );
 
-    const expectedMilk = calculateExpectedMilkVolume(
-      currentBaby.weight,
-      ageInDays,
-      currentBaby.constants || {}
+    const expectedMilk = calculateDailyMilkTarget(
+      currentBaby.weight || currentBaby.birthWeight,
+      currentBaby.mlPerKgTarget || 150
     );
 
-    const urineThreshold = calculateUrineThreshold(
-      currentBaby.weight,
-      currentBaby.constants || {}
+    const urineThreshold = calculateDailyPeeTarget(
+      currentBaby.weight || currentBaby.birthWeight
     );
 
     return {
