@@ -1,14 +1,21 @@
 import { useMemo } from 'react';
 import { useBaby } from './useBaby';
 import {
-  calculateExpectedMilkVolume,
-  calculateUrineThreshold,
+  calculateChronologicalAge,
+  calculateCorrectedAge,
+  getEffectiveAge,
   calculatePercentile,
-  validateMilkIntake,
-  validateUrineOutput,
-  calculateGrowthVelocity
+  calculateTheoreticalWeight,
+  convertBreastfeedingToMl,
+  calculateDailyMilkTarget,
+  calculateDailyPeeTarget,
+  calculateTotalFeedingVolume,
+  calculateTotalPeeVolume,
+  calculateTargetPercentage,
+  formatAge,
+  getTargetColorCode,
+  getOMSValue
 } from '../utils/calculation-helpers';
-import omsData from '../data/oms-data.json';
 
 /**
  * Hook to use calculation helpers with current baby context
@@ -18,103 +25,118 @@ export const useCalculations = () => {
   const { currentBaby } = useBaby();
 
   /**
-   * Get baby age in days
+   * Get baby effective age (chronological or corrected)
    */
-  const ageInDays = useMemo(() => {
-    if (!currentBaby?.birthDate) return 0;
+  const effectiveAge = useMemo(() => {
+    if (!currentBaby) return null;
+    return getEffectiveAge(currentBaby);
+  }, [currentBaby]);
 
-    return Math.floor(
-      (new Date() - new Date(currentBaby.birthDate)) / (1000 * 60 * 60 * 24)
-    );
+  /**
+   * Get theoretical weight for current baby
+   */
+  const theoreticalWeight = useMemo(() => {
+    if (!currentBaby) return 0;
+    // This would need growth records, for now return last recorded weight or birth weight
+    return currentBaby.lastWeight || currentBaby.birthWeight || 0;
   }, [currentBaby]);
 
   /**
    * Get expected milk volume for current baby
    */
   const expectedMilkVolume = useMemo(() => {
-    if (!currentBaby?.weight) return 0;
-
-    return calculateExpectedMilkVolume(
-      currentBaby.weight,
-      ageInDays,
-      currentBaby.constants || {}
-    );
-  }, [currentBaby, ageInDays]);
+    if (!theoreticalWeight) return 0;
+    return calculateDailyMilkTarget(theoreticalWeight, currentBaby?.mlPerKgTarget || 150);
+  }, [theoreticalWeight, currentBaby]);
 
   /**
-   * Get urine threshold for current baby
+   * Get pee threshold for current baby
    */
-  const urineThreshold = useMemo(() => {
-    if (!currentBaby?.weight) return 0;
-
-    return calculateUrineThreshold(currentBaby.weight, currentBaby.constants || {});
-  }, [currentBaby]);
+  const peeThreshold = useMemo(() => {
+    if (!theoreticalWeight) return 0;
+    return calculateDailyPeeTarget(theoreticalWeight);
+  }, [theoreticalWeight]);
 
   /**
    * Calculate percentile for a measurement
    */
-  const getPercentile = (metric, value, measurementDate = new Date()) => {
+  const getPercentile = (value, metric) => {
+    if (!currentBaby || !effectiveAge) return null;
+    return calculatePercentile(value, effectiveAge.months, currentBaby.sex, metric);
+  };
+
+  /**
+   * Convert breastfeeding duration to ml
+   */
+  const breastfeedingToMl = (durationMinutes) => {
+    if (!currentBaby || !effectiveAge) return 0;
+    return convertBreastfeedingToMl(
+      durationMinutes,
+      effectiveAge.months,
+      currentBaby.mlPerMinBreastfeeding
+    );
+  };
+
+  /**
+   * Calculate total feeding volume for a list of feedings
+   */
+  const getTotalFeedingVolume = (feedings) => {
+    if (!currentBaby || !feedings) return 0;
+    return calculateTotalFeedingVolume(feedings, currentBaby);
+  };
+
+  /**
+   * Calculate total pee volume for a list of diapers
+   */
+  const getTotalPeeVolume = (diapers) => {
+    if (!currentBaby || !diapers) return 0;
+    return calculateTotalPeeVolume(diapers, currentBaby.diaperTareWeight || 30);
+  };
+
+  /**
+   * Calculate percentage achieved of target
+   */
+  const getTargetPercentage = (actual, target) => {
+    return calculateTargetPercentage(actual, target);
+  };
+
+  /**
+   * Get color code based on percentage
+   */
+  const getColorCode = (percentage) => {
+    return getTargetColorCode(percentage);
+  };
+
+  /**
+   * Format age as human-readable string
+   */
+  const formatBabyAge = (lang = 'pt') => {
+    if (!effectiveAge) return '';
+    return formatAge(effectiveAge, lang);
+  };
+
+  /**
+   * Get OMS value for specific parameters
+   */
+  const getOMSReference = (ageMonths, metric, percentile) => {
     if (!currentBaby) return null;
-
-    return calculatePercentile(
-      metric,
-      value,
-      currentBaby.sex,
-      currentBaby.birthDate,
-      measurementDate,
-      omsData
-    );
+    return getOMSValue(ageMonths, currentBaby.sex, metric, percentile);
   };
-
-  /**
-   * Validate milk intake
-   */
-  const validateMilk = (volume) => {
-    if (!currentBaby?.weight) return null;
-
-    return validateMilkIntake(
-      volume,
-      currentBaby.weight,
-      ageInDays,
-      currentBaby.constants || {}
-    );
-  };
-
-  /**
-   * Validate urine output
-   */
-  const validateUrine = (volume) => {
-    if (!currentBaby?.weight) return null;
-
-    return validateUrineOutput(volume, currentBaby.weight, currentBaby.constants || {});
-  };
-
-  /**
-   * Calculate growth velocity
-   */
-  const getGrowthVelocity = (measurements) => {
-    if (!currentBaby || !measurements || measurements.length < 2) return null;
-
-    return calculateGrowthVelocity(measurements);
-  };
-
-  /**
-   * Get baby's current constants
-   */
-  const constants = useMemo(() => {
-    return currentBaby?.constants || {};
-  }, [currentBaby]);
 
   return {
     currentBaby,
-    ageInDays,
+    effectiveAge,
+    theoreticalWeight,
     expectedMilkVolume,
-    urineThreshold,
-    constants,
+    peeThreshold,
     getPercentile,
-    validateMilk,
-    validateUrine,
-    getGrowthVelocity
+    breastfeedingToMl,
+    getTotalFeedingVolume,
+    getTotalPeeVolume,
+    getTargetPercentage,
+    getColorCode,
+    formatBabyAge,
+    getOMSReference
   };
 };
 
