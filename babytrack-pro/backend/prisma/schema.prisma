@@ -1,0 +1,213 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  babies    Baby[]
+  otpCodes  OtpCode[]
+  fcmTokens FcmToken[]
+
+  @@map("users")
+}
+
+model Baby {
+  id                    String   @id @default(uuid())
+  userId                String
+  name                  String
+  sex                   String   // "male" or "female"
+  birthDate             DateTime
+  expectedDueDate       DateTime? // DPP - para prematuros
+  birthWeight           Float    // em gramas
+  birthHeight           Float    // em cm
+  birthHeadCircumference Float?   // em cm (opcional)
+
+  // Configurações
+  useAdjustedAge        Boolean  @default(false) // Toggle idade corrigida
+  mlPerMinBreastfeeding Json     @default("{\"0-1\": 5, \"1-3\": 6, \"3-6\": 7, \"6+\": 8}") // Por idade em meses
+  mlPerKgTarget         Float    @default(150)   // ml/kg/dia
+  diaperTareWeight      Float    @default(30)    // Tara fralda em gramas
+  feedingReminderHours  Int      @default(3)     // Lembrete de mamada
+  enableFeedingReminder Boolean  @default(true)
+  enableLowIntakeAlert  Boolean  @default(true)
+  enableMedicationReminder Boolean @default(true)
+  omsPercentile         String   @default("P50") // P3, P15, P50, P85, P97
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feedings       Feeding[]
+  diapers        Diaper[]
+  growths        Growth[]
+  medications    Medication[]
+  symptoms       Symptom[]
+
+  @@map("babies")
+  @@index([userId])
+}
+
+model Feeding {
+  id        String   @id @default(uuid())
+  babyId    String
+  type      String   // "breast" or "bottle"
+  side      String?  // "left" or "right" (apenas para breast)
+  duration  Int?     // minutos (apenas para breast)
+  volumeMl  Float?   // ml (para bottle ou convertido de breast)
+  timestamp DateTime @default(now())
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  baby Baby @relation(fields: [babyId], references: [id], onDelete: Cascade)
+
+  @@map("feedings")
+  @@index([babyId])
+  @@index([timestamp])
+}
+
+model Diaper {
+  id         String   @id @default(uuid())
+  babyId     String
+  type       String   // "pee", "poop", "both"
+  weightGrams Float?  // Peso da fralda com xixi (para calcular volume)
+  timestamp  DateTime @default(now())
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  baby Baby @relation(fields: [babyId], references: [id], onDelete: Cascade)
+
+  @@map("diapers")
+  @@index([babyId])
+  @@index([timestamp])
+}
+
+model Growth {
+  id                  String   @id @default(uuid())
+  babyId              String
+  weightGrams         Float    // Peso em gramas
+  heightCm            Float    // Altura em cm
+  headCircumferenceCm Float?   // Perímetro cefálico em cm (opcional)
+  weightPercentile    String?  // P3, P15, P50, P85, P97
+  heightPercentile    String?
+  headPercentile      String?
+  timestamp           DateTime @default(now())
+  notes               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  baby Baby @relation(fields: [babyId], references: [id], onDelete: Cascade)
+
+  @@map("growths")
+  @@index([babyId])
+  @@index([timestamp])
+}
+
+model Medication {
+  id          String   @id @default(uuid())
+  babyId      String
+  name        String
+  dosage      String   // Ex: "5ml", "2 gotas"
+  frequency   String   // Ex: "1x/dia", "2x/dia", "8 em 8h"
+  times       Json     // Array de horários: ["08:00", "20:00"]
+  startDate   DateTime
+  endDate     DateTime?
+  isActive    Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  baby Baby            @relation(fields: [babyId], references: [id], onDelete: Cascade)
+  logs MedicationLog[]
+
+  @@map("medications")
+  @@index([babyId])
+  @@index([isActive])
+}
+
+model MedicationLog {
+  id           String   @id @default(uuid())
+  medicationId String
+  scheduledTime DateTime // Horário programado
+  takenAt      DateTime? // Horário real (null = não tomado)
+  skipped      Boolean  @default(false)
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  medication Medication @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+
+  @@map("medication_logs")
+  @@index([medicationId])
+  @@index([scheduledTime])
+}
+
+model Symptom {
+  id          String   @id @default(uuid())
+  babyId      String
+  type        String   // "fever", "colic", "rash", "congestion", "other"
+  severity    String   // "mild", "moderate", "severe"
+  description String
+  temperature Float?   // Para febre (em °C)
+  timestamp   DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  baby Baby @relation(fields: [babyId], references: [id], onDelete: Cascade)
+
+  @@map("symptoms")
+  @@index([babyId])
+  @@index([timestamp])
+}
+
+model FcmToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("fcm_tokens")
+  @@index([userId])
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  userId    String
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("otp_codes")
+  @@index([userId])
+  @@index([code])
+}
